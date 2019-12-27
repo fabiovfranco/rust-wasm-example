@@ -7,15 +7,14 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
+// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global allocator.
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static mut ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 struct Point2D {
-    x: i32,
-    y: i32
+    x: f64,
+    y: f64
 }
 
 struct Vector2D {
@@ -25,14 +24,18 @@ struct Vector2D {
 
 struct Particle {
     id: i32,
-    radius: i32,
+    radius: f64,
     vector: Vector2D
 }
 
 static mut POINTS: LinkedList<Particle> = LinkedList::new();
 static MAX_POINTS: i32 = 200;
-static MAX_X: i32 = 300;
-static MAX_Y: i32 = 300;
+static MAX_X: f64 = 300.0;
+static MAX_Y: f64 = 300.0;
+
+////////// ----------------------------------------------------------------------
+////////// PUBLIC & EXTERNAL FUNCTIONS    ---------------------------------------
+////////// ----------------------------------------------------------------------
 
 #[wasm_bindgen]
 extern {
@@ -45,32 +48,29 @@ pub fn setup() {
     log("Initializing objects.");
     let mut rng = rand::thread_rng();
     for id in 0..MAX_POINTS {
-        let location = Point2D { x: rng.gen::<i32>() % MAX_X, y: rng.gen::<i32>() % MAX_Y };
-        let direction = Point2D { x: rng.gen::<i32>() % 2, y: rng.gen::<i32>() % 2 };
+        let location = Point2D { x: rng.gen::<f64>() * MAX_X, y: rng.gen::<f64>() * MAX_Y };
+        let direction = Point2D { x: rng.gen::<f64>() * 2.0, y: rng.gen::<f64>() % 2.0 };
+        log(&mut format!("x: {x}, y: {y}", x=location.x, y=location.y));
         unsafe {
             let vector = Vector2D { location, direction };
-            POINTS.push_back(Particle { id, vector, radius: 2 })
+            POINTS.push_back(Particle { id, vector, radius: 2.0 })
         }
     }
     log("Setup done.");
 }
 
-fn check_colide_edge(particle: &mut Particle) {
-    let mut vector = &mut particle.vector;
-    let next_x = vector.location.x + vector.direction.x;
-    let next_y = vector.location.y + vector.direction.y;
-
-    if next_x > MAX_X || next_x < 0 {
-        vector.direction.x = invert(vector.direction.x);
-    }
-
-    if next_y > MAX_Y || next_y < 0 {
-        vector.direction.y = invert(vector.direction.y);            
-    }
+#[wasm_bindgen]
+pub fn render() {
+    move_points();
+    draw_points();
 }
 
-fn invert(value: i32) -> i32 {
-     return value * -1;
+////////// ----------------------------------------------------------------------
+////////// VECTOR OPERATION       -----------------------------------------------
+////////// ----------------------------------------------------------------------
+
+fn invert(value: f64) -> f64 {
+    return value * -1.0;
 }
 
 fn move_point(vector: &mut Vector2D) {
@@ -78,34 +78,67 @@ fn move_point(vector: &mut Vector2D) {
     vector.location.y += vector.direction.y;
 }
 
-fn check_point_colision(particle: &mut Particle) {
+fn subtract(v1: &Point2D, v2: &Point2D) -> Point2D {
+    let x = v1.x - v2.x;
+    let y = v1.y - v2.y;
+    return Point2D { x, y };
+}
+
+////////// ----------------------------------------------------------------------
+////////// COLLISION DETECTION    -----------------------------------------------
+////////// ----------------------------------------------------------------------
+
+fn check_colide_edge(particle: &mut Particle) {
     let mut vector = &mut particle.vector;
+    let next_x = vector.location.x + vector.direction.x;
+    let next_y = vector.location.y + vector.direction.y;
+
+    if next_x > MAX_X || next_x < 0.0 {
+        vector.direction.x = invert(vector.direction.x);
+    }
+
+    if next_y > MAX_Y || next_y < 0.0 {
+        vector.direction.y = invert(vector.direction.y);            
+    }
+}
+
+fn check_particle_colision(p1: &Particle, p2: &Particle) -> bool {
+    let x1 = p1.vector.location.x;
+    let y1 = p1.vector.location.y;
+    let x2 = p2.vector.location.x;
+    let y2 = p2.vector.location.y;
+    return (( x2-x1 ) * ( x2-x1 )  + ( y2-y1 ) * ( y2-y1 )).sqrt() < p1.radius + p2.radius;
+}
+
+fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
+    let normal = subtract(&p1.vector.location, &p2.vector.location);
+    p1.vector.direction.x = invert(p1.vector.direction.x);
+    p1.vector.direction.y = invert(p1.vector.direction.y);
+    p2.vector.direction.x = invert(p2.vector.direction.x);
+    p2.vector.direction.y = invert(p2.vector.direction.y);
+    move_point(&mut p1.vector);
+}
+
+fn check_particle_colisions(particle: &mut Particle) {
     unsafe {
         for particle_to_compare in POINTS.iter_mut() {
-            if particle.id < particle_to_compare.id {
-                let mut vector_to_compare = &mut particle_to_compare.vector;
-                let x1 = vector.location.x;
-                let y1 = vector.location.y;
-                let x2 = vector_to_compare.location.x;
-                let y2 = vector_to_compare.location.y;
-                if f64::from( ( x2-x1 ) * ( x2-x1 )  + ( y2-y1 ) * ( y2-y1 ) ).sqrt() < f64::from(particle.radius + particle_to_compare.radius) {
-                    vector.direction.x = invert(vector.direction.x);
-                    vector.direction.y = invert(vector.direction.y);
-                    vector_to_compare.direction.x = invert(vector_to_compare.direction.x);
-                    vector_to_compare.direction.y = invert(vector_to_compare.direction.y);
-                    move_point(&mut vector);
-                }
+            if particle.id < particle_to_compare.id && check_particle_colision(particle, particle_to_compare) {
+                colide_particles(particle, particle_to_compare);
             }
         }
     }
 }
+
+////////// ----------------------------------------------------------------------
+////////// MOTION           -----------------------------------------------------
+////////// ----------------------------------------------------------------------
 
 fn move_points() {
     unsafe {
         for particle in POINTS.iter_mut() {
             check_colide_edge(particle);    
             move_point(&mut particle.vector);
-            check_point_colision(particle);
+            check_particle_colisions(particle);
         }
     }
 }
@@ -113,7 +146,7 @@ fn move_points() {
 fn draw_point(particle: &mut Particle, context: & web_sys::CanvasRenderingContext2d) {
     let vector = &particle.vector;
     context.begin_path();
-    context.arc(f64::from(vector.location.x), f64::from(vector.location.y), f64::from(particle.radius), 0.0, 360.0).ok();
+    context.arc(vector.location.x, vector.location.y, particle.radius, 0.0, 360.0).ok();
     if particle.id % 3 == 0 {
         context.set_fill_style(&JsValue::from_str("rgb(255, 0, 0)"));
     } else if particle.id % 3 == 1 {
@@ -125,8 +158,8 @@ fn draw_point(particle: &mut Particle, context: & web_sys::CanvasRenderingContex
 
     context.begin_path();
     context.set_stroke_style(&JsValue::from_str("rgb(0, 0, 0)"));
-    context.move_to(f64::from(vector.location.x), f64::from(vector.location.y));
-    context.line_to(f64::from(vector.location.x+(vector.direction.x*4)), f64::from(vector.location.y+(vector.direction.y*4)));
+    context.move_to(vector.location.x, vector.location.y);
+    context.line_to(vector.location.x+(vector.direction.x*4.0), vector.location.y+(vector.direction.y*4.0));
     context.stroke();
 }
 
@@ -149,16 +182,10 @@ fn draw_points() {
 
     unsafe {
         context.begin_path();
-        context.clear_rect(0.0, 0.0, f64::from(MAX_X), f64::from(MAX_Y));
+        context.clear_rect(0.0, 0.0, MAX_X, MAX_Y);
         context.stroke();
         for particle in POINTS.iter_mut() {
             draw_point(particle, &context)
         }
     }
-}
-
-#[wasm_bindgen]
-pub fn render() {
-    move_points();
-    draw_points();
 }
