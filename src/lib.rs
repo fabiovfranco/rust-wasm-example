@@ -29,9 +29,9 @@ struct Particle {
 }
 
 static mut POINTS: LinkedList<Particle> = LinkedList::new();
-static MAX_POINTS: i32 = 200;
-static MAX_X: f64 = 300.0;
-static MAX_Y: f64 = 300.0;
+static MAX_POINTS: i32 = 500;
+static MAX_X: f64 = 600.0;
+static MAX_Y: f64 = 600.0;
 
 ////////// ----------------------------------------------------------------------
 ////////// PUBLIC & EXTERNAL FUNCTIONS    ---------------------------------------
@@ -53,7 +53,7 @@ pub fn setup() {
         log(&mut format!("x: {x}, y: {y}", x=location.x, y=location.y));
         unsafe {
             let vector = Vector2D { location, direction };
-            POINTS.push_back(Particle { id, vector, radius: 2.0 })
+            POINTS.push_back(Particle { id, vector, radius: rng.gen::<f64>() * 4.0 + 2.0 })
         }
     }
     log("Setup done.");
@@ -84,6 +84,16 @@ fn subtract(v1: &Point2D, v2: &Point2D) -> Point2D {
     return Point2D { x, y };
 }
 
+fn divide(v1: &Point2D, value: f64) -> Point2D {
+    return Point2D { x: v1.x / value, y: v1.y / value };
+}
+
+fn distance(v1: &Point2D, v2: &Point2D) -> f64 {
+    let x = v1.x + v2.x;
+    let y = v1.y + v2.y;
+    return ((x*x) - (y*y)).sqrt()
+}
+
 ////////// ----------------------------------------------------------------------
 ////////// COLLISION DETECTION    -----------------------------------------------
 ////////// ----------------------------------------------------------------------
@@ -111,11 +121,24 @@ fn check_particle_colision(p1: &Particle, p2: &Particle) -> bool {
 }
 
 fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
-    let normal = subtract(&p1.vector.location, &p2.vector.location);
-    p1.vector.direction.x = invert(p1.vector.direction.x);
-    p1.vector.direction.y = invert(p1.vector.direction.y);
-    p2.vector.direction.x = invert(p2.vector.direction.x);
-    p2.vector.direction.y = invert(p2.vector.direction.y);
+    let p0 = Point2D { x: 0.0, y: 0.0 };
+    let velocity_p1 = distance(&p0, &p1.vector.direction);
+    let velocity_p2 = distance(&p0, &p2.vector.direction);
+    let optimizedP: f64 = velocity_p1 - velocity_p2;
+
+    // log(&mut format!("optimizedP: {optimizedP}, lengthP1: {lengthP1}, lengthP2: {lengthP2}", 
+    //     optimizedP=optimizedP, lengthP1=velocity_p1, lengthP2=velocity_p2));
+    if !optimizedP.is_nan() {
+        p1.vector.direction.x = (p1.vector.direction.x - optimizedP);
+        p1.vector.direction.y = (p1.vector.direction.y - optimizedP);
+        p2.vector.direction.x = (p2.vector.direction.x + optimizedP);
+        p2.vector.direction.y = (p2.vector.direction.y + optimizedP);
+    }
+
+    // p1.vector.direction.x = invert(p1.vector.direction.x);
+    // p1.vector.direction.y = invert(p1.vector.direction.y);
+    // p2.vector.direction.x = invert(p2.vector.direction.x);
+    // p2.vector.direction.y = invert(p2.vector.direction.y);
     move_point(&mut p1.vector);
 }
 
@@ -143,21 +166,24 @@ fn move_points() {
     }
 }
 
+
 fn draw_point(particle: &mut Particle, context: & web_sys::CanvasRenderingContext2d) {
     let vector = &particle.vector;
     context.begin_path();
     context.arc(vector.location.x, vector.location.y, particle.radius, 0.0, 360.0).ok();
-    if particle.id % 3 == 0 {
-        context.set_fill_style(&JsValue::from_str("rgb(255, 0, 0)"));
-    } else if particle.id % 3 == 1 {
-        context.set_fill_style(&JsValue::from_str("rgb(0, 255, 0)"));
-    } else if particle.id % 3 == 2 {
-        context.set_fill_style(&JsValue::from_str("rgb(0, 0, 255)"));
+    unsafe {
+        if particle.id % 3 == 0 {
+            context.set_fill_style(&JsValue::from_str("rgb(255, 0, 0)"));
+        } else if particle.id % 3 == 1 {
+            context.set_fill_style(&JsValue::from_str("rgb(0, 255, 0)"));
+        } else if particle.id % 3 == 2 {
+            context.set_fill_style(&JsValue::from_str("rgb(0, 0, 255)"));
+        }
     }
     context.fill();
 
     context.begin_path();
-    context.set_stroke_style(&JsValue::from_str("rgb(0, 0, 0)"));
+    context.set_stroke_style(&JsValue::from_str("rgb(255, 255, 255)"));
     context.move_to(vector.location.x, vector.location.y);
     context.line_to(vector.location.x+(vector.direction.x*4.0), vector.location.y+(vector.direction.y*4.0));
     context.stroke();
@@ -182,7 +208,8 @@ fn draw_points() {
 
     unsafe {
         context.begin_path();
-        context.clear_rect(0.0, 0.0, MAX_X, MAX_Y);
+        context.set_fill_style(&JsValue::from_str("rgb(0, 0, 0)"));
+        context.fill_rect(0.0, 0.0, MAX_X, MAX_Y);
         context.stroke();
         for particle in POINTS.iter_mut() {
             draw_point(particle, &context)
