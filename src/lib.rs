@@ -129,10 +129,10 @@ fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
     // log(&mut format!("optimizedP: {optimizedP}, lengthP1: {lengthP1}, lengthP2: {lengthP2}", 
     //     optimizedP=optimizedP, lengthP1=velocity_p1, lengthP2=velocity_p2));
     if !optimizedP.is_nan() {
-        p1.vector.direction.x = (p1.vector.direction.x - optimizedP);
-        p1.vector.direction.y = (p1.vector.direction.y - optimizedP);
-        p2.vector.direction.x = (p2.vector.direction.x + optimizedP);
-        p2.vector.direction.y = (p2.vector.direction.y + optimizedP);
+        p1.vector.direction.x = (p1.vector.direction.x - optimizedP) / velocity_p1;
+        p1.vector.direction.y = (p1.vector.direction.y - optimizedP) / velocity_p1;
+        p2.vector.direction.x = (p2.vector.direction.x + optimizedP) / velocity_p2;
+        p2.vector.direction.y = (p2.vector.direction.y + optimizedP) / velocity_p2;
     }
 
     // p1.vector.direction.x = invert(p1.vector.direction.x);
