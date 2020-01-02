@@ -18,14 +18,15 @@ struct Point2D {
 }
 
 struct Vector2D {
-    location: Point2D,
-    direction: Point2D
+    x: f64,
+    y: f64
 }
 
 struct Particle {
     id: i32,
     radius: f64,
-    vector: Vector2D
+    location: Point2D,
+    direction: Vector2D
 }
 
 static mut POINTS: LinkedList<Particle> = LinkedList::new();
@@ -49,11 +50,10 @@ pub fn setup() {
     let mut rng = rand::thread_rng();
     for id in 0..MAX_POINTS {
         let location = Point2D { x: rng.gen::<f64>() * MAX_X, y: rng.gen::<f64>() * MAX_Y };
-        let direction = Point2D { x: rng.gen::<f64>() * 2.0, y: rng.gen::<f64>() % 2.0 };
+        let direction = Vector2D { x: rng.gen::<f64>() * 2.0, y: rng.gen::<f64>() % 2.0 };
         log(&mut format!("x: {x}, y: {y}", x=location.x, y=location.y));
         unsafe {
-            let vector = Vector2D { location, direction };
-            POINTS.push_back(Particle { id, vector, radius: rng.gen::<f64>() * 4.0 + 2.0 })
+            POINTS.push_back(Particle { id, location, direction, radius: rng.gen::<f64>() * 5.0 + 2.0 })
         }
     }
     log("Setup done.");
@@ -73,25 +73,45 @@ fn invert(value: f64) -> f64 {
     return value * -1.0;
 }
 
-fn move_point(vector: &mut Vector2D) {
-    vector.location.x += vector.direction.x;
-    vector.location.y += vector.direction.y;
+fn move_point(particle: &mut Particle) {
+    particle.location.x += particle.direction.x;
+    particle.location.y += particle.direction.y;
 }
 
-fn subtract(v1: &Point2D, v2: &Point2D) -> Point2D {
+fn subtract(v1: &Vector2D, v2: &Vector2D) -> Vector2D {
     let x = v1.x - v2.x;
     let y = v1.y - v2.y;
-    return Point2D { x, y };
+    return Vector2D { x, y };
 }
 
-fn divide(v1: &Point2D, value: f64) -> Point2D {
-    return Point2D { x: v1.x / value, y: v1.y / value };
-}
-
-fn distance(v1: &Point2D, v2: &Point2D) -> f64 {
+fn add(v1: &Vector2D, v2: &Vector2D) -> Vector2D {
     let x = v1.x + v2.x;
     let y = v1.y + v2.y;
-    return ((x*x) - (y*y)).sqrt()
+    return Vector2D { x, y };
+}
+
+fn divide(v1: &Vector2D, value: f64) -> Vector2D {
+    return Vector2D { x: v1.x / value, y: v1.y / value };
+}
+
+fn length(v: &Vector2D) -> f64 {
+    return ((v.x*v.x) + (v.y*v.x)).sqrt()
+}
+
+fn dot(v1: &Vector2D, v2: &Vector2D) -> f64 {
+    let x = v1.x * v2.x;
+    let y = v1.y * v2.y;
+    return x + y;
+}
+
+fn normalize(v: &Vector2D) -> Vector2D {
+    let len2 = (v.x * v.x) + (v.y * v.y);
+    if len2 > 0.0 {
+        let invLen = 1.0 / len2.sqrt(); 
+        return Vector2D { x: v.x * invLen, y: v.y * invLen };
+    }
+
+    return Vector2D { x: v.x, y: v.y };
 }
 
 ////////// ----------------------------------------------------------------------
@@ -99,47 +119,40 @@ fn distance(v1: &Point2D, v2: &Point2D) -> f64 {
 ////////// ----------------------------------------------------------------------
 
 fn check_colide_edge(particle: &mut Particle) {
-    let mut vector = &mut particle.vector;
-    let next_x = vector.location.x + vector.direction.x;
-    let next_y = vector.location.y + vector.direction.y;
+    let next_x = particle.location.x + particle.direction.x;
+    let next_y = particle.location.y + particle.direction.y;
 
     if next_x > MAX_X || next_x < 0.0 {
-        vector.direction.x = invert(vector.direction.x);
+        particle.direction.x = invert(particle.direction.x);
     }
 
     if next_y > MAX_Y || next_y < 0.0 {
-        vector.direction.y = invert(vector.direction.y);            
+        particle.direction.y = invert(particle.direction.y);            
     }
 }
 
 fn check_particle_colision(p1: &Particle, p2: &Particle) -> bool {
-    let x1 = p1.vector.location.x;
-    let y1 = p1.vector.location.y;
-    let x2 = p2.vector.location.x;
-    let y2 = p2.vector.location.y;
+    let x1 = p1.location.x;
+    let y1 = p1.location.y;
+    let x2 = p2.location.x;
+    let y2 = p2.location.y;
     return (( x2-x1 ) * ( x2-x1 )  + ( y2-y1 ) * ( y2-y1 )).sqrt() < p1.radius + p2.radius;
 }
 
-fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
-    let p0 = Point2D { x: 0.0, y: 0.0 };
-    let velocity_p1 = distance(&p0, &p1.vector.direction);
-    let velocity_p2 = distance(&p0, &p2.vector.direction);
-    let optimizedP: f64 = velocity_p1 - velocity_p2;
+fn colide_particles(p1: &mut Particle, p2: &mut Particle) { 
+    let dotv = dot(&p1.direction, &p2.direction);
+    //log(&mut format!("dotv: {dotv}", dotv=dotv));
+    let v1 = Vector2D { x: p1.direction.x * dotv, y: p1.direction.y * dotv };
+    let v2 = Vector2D { x: p2.direction.x * dotv, y: p2.direction.y * dotv };
+    p1.direction = normalize(&v1);
+    p2.direction = normalize(&v2);
 
-    // log(&mut format!("optimizedP: {optimizedP}, lengthP1: {lengthP1}, lengthP2: {lengthP2}", 
-    //     optimizedP=optimizedP, lengthP1=velocity_p1, lengthP2=velocity_p2));
-    if !optimizedP.is_nan() {
-        p1.vector.direction.x = (p1.vector.direction.x - optimizedP) / velocity_p1;
-        p1.vector.direction.y = (p1.vector.direction.y - optimizedP) / velocity_p1;
-        p2.vector.direction.x = (p2.vector.direction.x + optimizedP) / velocity_p2;
-        p2.vector.direction.y = (p2.vector.direction.y + optimizedP) / velocity_p2;
-    }
-
-    // p1.vector.direction.x = invert(p1.vector.direction.x);
-    // p1.vector.direction.y = invert(p1.vector.direction.y);
-    // p2.vector.direction.x = invert(p2.vector.direction.x);
-    // p2.vector.direction.y = invert(p2.vector.direction.y);
-    move_point(&mut p1.vector);
+    // p1.direction.x = invert(p1.direction.x);
+    // p1.direction.y = invert(p1.direction.y);
+    // p2.direction.x = invert(p2.direction.x);
+    // p2.direction.y = invert(p2.direction.y);
+    move_point(p1);
+    move_point(p2);
 }
 
 fn check_particle_colisions(particle: &mut Particle) {
@@ -158,9 +171,9 @@ fn check_particle_colisions(particle: &mut Particle) {
 
 fn move_points() {
     unsafe {
-        for particle in POINTS.iter_mut() {
+        for mut particle in POINTS.iter_mut() {
             check_colide_edge(particle);    
-            move_point(&mut particle.vector);
+            move_point(&mut particle);
             check_particle_colisions(particle);
         }
     }
@@ -168,24 +181,21 @@ fn move_points() {
 
 
 fn draw_point(particle: &mut Particle, context: & web_sys::CanvasRenderingContext2d) {
-    let vector = &particle.vector;
     context.begin_path();
-    context.arc(vector.location.x, vector.location.y, particle.radius, 0.0, 360.0).ok();
-    unsafe {
-        if particle.id % 3 == 0 {
-            context.set_fill_style(&JsValue::from_str("rgb(255, 0, 0)"));
-        } else if particle.id % 3 == 1 {
-            context.set_fill_style(&JsValue::from_str("rgb(0, 255, 0)"));
-        } else if particle.id % 3 == 2 {
-            context.set_fill_style(&JsValue::from_str("rgb(0, 0, 255)"));
-        }
+    context.arc(particle.location.x, particle.location.y, particle.radius, 0.0, 360.0).ok();
+    if particle.id % 3 == 0 {
+        context.set_fill_style(&JsValue::from_str("rgb(255, 0, 0)"));
+    } else if particle.id % 3 == 1 {
+        context.set_fill_style(&JsValue::from_str("rgb(0, 255, 0)"));
+    } else if particle.id % 3 == 2 {
+        context.set_fill_style(&JsValue::from_str("rgb(0, 0, 255)"));
     }
     context.fill();
 
     context.begin_path();
     context.set_stroke_style(&JsValue::from_str("rgb(255, 255, 255)"));
-    context.move_to(vector.location.x, vector.location.y);
-    context.line_to(vector.location.x+(vector.direction.x*4.0), vector.location.y+(vector.direction.y*4.0));
+    context.move_to(particle.location.x, particle.location.y);
+    context.line_to(particle.location.x+(particle.direction.x*4.0), particle.location.y+(particle.direction.y*4.0));
     context.stroke();
 }
 
