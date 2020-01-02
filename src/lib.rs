@@ -139,9 +139,21 @@ fn check_particle_colision(p1: &Particle, p2: &Particle) -> bool {
     return (( x2-x1 ) * ( x2-x1 )  + ( y2-y1 ) * ( y2-y1 )).sqrt() < p1.radius + p2.radius;
 }
 
-fn colide_particles(p1: &mut Particle, p2: &mut Particle) { 
+fn distance(p1: &mut Point2D, p2: &mut Point2D) -> f64 {
+    let x = p1.x - p2.x;
+    let y = p1.y - p2.y;
+    return ((x*x) + (y*y)).sqrt();
+}
+
+fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
+    // adjust p1 location
+    let dist = distance(p1.location, p2.location);
+    let diff = dist - p1.radius - p2.radius;
+    p1.location.x = p1.location.x + diff;
+    p1.location.y = p1.location.y + diff;
+
+    // change direction
     let dotv = dot(&p1.direction, &p2.direction);
-    //log(&mut format!("dotv: {dotv}", dotv=dotv));
     let v1 = Vector2D { x: p1.direction.x * dotv, y: p1.direction.y * dotv };
     let v2 = Vector2D { x: p2.direction.x * dotv, y: p2.direction.y * dotv };
     p1.direction = normalize(&v1);
@@ -152,7 +164,6 @@ fn colide_particles(p1: &mut Particle, p2: &mut Particle) {
     // p2.direction.x = invert(p2.direction.x);
     // p2.direction.y = invert(p2.direction.y);
     move_point(p1);
-    move_point(p2);
 }
 
 fn check_particle_colisions(particle: &mut Particle) {
